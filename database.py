@@ -1,7 +1,8 @@
-from sqlmodel import Session, SQLModel, select, delete, create_engine
+from sqlmodel import Session, SQLModel, select, delete, create_engine, asc, desc
 from models import UserInDB, RefreshToken
 from datetime import timezone
 from config import settings
+from typing import Sequence
 
 engine = create_engine(settings.DATABASE_URL)
 def create_db_and_tables():
@@ -13,9 +14,35 @@ def get_user(session: Session, username: str) -> UserInDB | None:
     user = session.exec(query).first()
     return user
 
+def get_particular_users(
+    session: Session,
+    username_substring: str | None,
+    limit: int | None,
+    sort_by: str,
+    sort_order: str
+) -> Sequence[UserInDB]:
+    query = select(UserInDB)
+    if username_substring:
+        query = query.where(UserInDB.username.icontains(username_substring))
+    
+    sort_column = UserInDB.username if sort_by == "username" else UserInDB.created_at
+    if sort_order == "asc":
+        query = query.order_by(asc(sort_column))
+    else:
+        query = query.order_by(desc(sort_column))
+    
+    if limit: 
+        query = query.limit(limit)
+    users = session.exec(query).all()
+    return users
+
+
 def add_user(session: Session, user: UserInDB) -> None:
     session.add(user)
     session.commit()
+
+
+
 
 
 

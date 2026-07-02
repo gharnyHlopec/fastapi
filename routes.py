@@ -1,4 +1,5 @@
-from fastapi import HTTPException, Response, Cookie, status, Depends, APIRouter
+from fastapi import (HTTPException, Response, Cookie, status, Depends,
+                     APIRouter, Query)
 from datetime import datetime, timedelta, timezone
 from config import settings
 import traceback
@@ -6,8 +7,8 @@ from models import AccessToken, UserInDB, User, RefreshToken
 from dependencies import SessionDep, FormDataDep, UserDep, require_role
 from database import (get_user, add_user, get_refresh_token, add_refresh_token, 
                       delete_refresh_token, set_refresh_token_expire_date, 
-                      enforce_session_limit)
-from typing import Annotated
+                      get_particular_users, enforce_session_limit)
+from typing import Annotated, Literal, Sequence
 from security import (verify_password, create_access_token, 
                       generate_refresh_token_string)
 from schemas import to_form_user
@@ -172,3 +173,22 @@ def refresh_session(session: SessionDep, refresh_token: str = Cookie(None)):
 @router.get("/my_information", response_model = User)
 def get_my_information(user: Annotated[UserInDB, Depends(require_role("user"))]):
     return user
+
+@router.get("/users", response_model = list[User])
+def users(
+    user: Annotated[UserInDB, Depends(require_role("admin"))],
+    session: SessionDep,
+    username_substring: Annotated[str | None,  Query(description = "Поиск по части username'а")] = None,
+    limit: Annotated[int | None, Query(description = "Максимальное возвращаемое количество записей")] = None,
+    sort_by: Annotated[Literal["username", "created_at"], Query(description = "По какому полю сортировать")] = "username",
+    sort_order: Annotated[Literal["asc", "desc"], Query(description = "В каком порядке отображать записи")] = "asc"
+) -> Sequence[UserInDB]:
+    users = get_particular_users(session, username_substring, limit, sort_by, sort_order)
+    return users
+
+@router.get("/users/{user_id}", response_model=User)
+def get_particular_user(
+    user_id: int, 
+    user: Annotated[UserInDB, Depends(require_role("admin"))]
+) -> User:
+    ...
