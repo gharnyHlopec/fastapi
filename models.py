@@ -73,9 +73,19 @@ class User(BaseModel):
         return dt.strftime("%d.%m.%Y %H:%M:%S")
 
 class RefreshToken(SQLModel, table = True):
-    id: int | None = Field(default = None, primary_key=True)
-    token: str
-    username: str = Field(index = True)
+    id: int | None = Field(
+        default = None, 
+        primary_key=True,
+        description="Уникальный идентификатор пользователя"
+    )
+    token: str = Field(
+        description="Jwt токен"
+    )
+    username: str = Field(
+        index = True,
+        description="Уникальный email пользователя"
+    )
     expires_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True))
+        sa_column=Column(DateTime(timezone=True)),
+        description="Время истечения срока действия токена"
     )
