@@ -1,6 +1,5 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Response, Cookie, status, Depends
-from sqlmodel import SQLModel, create_engine
 import bcrypt
 import jwt
 from datetime import datetime, timedelta, timezone
