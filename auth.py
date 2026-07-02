@@ -1,9 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Response, Cookie, status, Depends
-import bcrypt
-import jwt
 from datetime import datetime, timedelta, timezone
-import secrets
 from config import settings
 import traceback
 from models import AccessToken, UserInDB, User, RefreshToken
@@ -12,31 +9,9 @@ from database import (get_user, add_user, get_refresh_token, add_refresh_token,
                       delete_refresh_token, set_refresh_token_expire_date, 
                       enforce_session_limit, create_db_and_tables)
 from typing import Annotated
-
-
-
-
-def create_access_token(data: dict, expires_delta: timedelta):
-    to_encode = data.copy()
-    to_encode['exp'] = datetime.now(timezone.utc) + expires_delta
-    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(
-        plain_password.encode("utf-8"),
-        hashed_password.encode("utf-8"),
-    )
-
-def generate_refresh_token_string() -> str:
-    """Генерирует уникальную безопасную строку для базы данных"""
-    return secrets.token_urlsafe(64)
-
-
-
-
-
-
+from security import (verify_password, create_access_token, 
+                      generate_refresh_token_string)
+from schemas import to_form_user
 
 @asynccontextmanager
 async def lifespan(app :FastAPI):
@@ -61,10 +36,7 @@ def register(
     if get_user(session, form_data.username):
         raise HTTPException(status_code=400, detail="User with such email already exists")
 
-    pwd_bytes = form_data.password.encode('utf-8')
-    salt = bcrypt.gensalt()
-    hashed_password =  bcrypt.hashpw(pwd_bytes, salt).decode('utf-8')
-    user = UserInDB(username=form_data.username, hashed_password=hashed_password, role="user")
+    user = to_form_user(form_data)
     try:
         add_user(session, user)
     except Exception:
