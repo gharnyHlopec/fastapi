@@ -2,35 +2,71 @@ from pydantic import BaseModel, field_serializer
 from sqlmodel import SQLModel, Field 
 from sqlalchemy import Column, DateTime
 from datetime import datetime, timezone
+from typing import Literal
+from enum import Enum
+
+class UserRole(str, Enum):
+    user = "user"
+    admin = "admin"
+
 
 class AccessToken(BaseModel):
-    access_token: str
-    token_type: str
+    access_token: str = Field(
+        description = "jwt токен",
+        schema_extra = {"example": "JNW54zxJpN0t5e9_VAsKoeEI7edycjtWJWt6_xIiw8nsWNE2YvZvn3HF3nza3TayuLv41O6SjyL4pTLYPE0B8w"}
+    )
+    token_type: Literal["bearer"] = Field(
+        default = "bearer",
+        description = "Тип токена. В нашем случае всегда 'bearer'"
+    )
 
 class TokenData(BaseModel):
-    username: str
+    username: str = Field(
+        description = "Уникальный email пользователя",
+        schema_extra={"example": "useremail@gmail.com"}
+    )
 
 class UserInDB(SQLModel, table = True):
-    id: int | None = Field(default = None, primary_key=True)
-    username: str = Field(index = True)
-    hashed_password: str
-    role: str
+    id: int | None = Field(
+        default = None, 
+        description="Уникальный id пользователя",
+        primary_key=True
+    )
+    username: str = Field(
+        index = True,
+        description="Уникальный email пользователя"
+    )
+    hashed_password: str = Field(
+        description = "Зашифрованный пароль пользователя"
+    )
+    role: UserRole = Field(
+        description="Роль пользователя. Может принимать только значения 'user' и 'admin'"
+    )
 
     created_at: datetime = Field(
-        default_factory = lambda: datetime.now(timezone.utc)
+        default_factory = lambda: datetime.now(timezone.utc),
+        description="Дата и время регистрации аккаунта",
+        schema_extra={"example": "02.07.2026 15:09:07"}
     )
 
     updated_at: datetime = Field(
         default_factory= lambda: datetime.now(timezone.utc), 
+        description="Дата и время изменения записи пользователя, которое происходит через ORM session.commit()",
+        schema_extra={"example": "02.07.2026 15:09:07"},
         sa_column_kwargs= {"onupdate": lambda: datetime.now(timezone.utc)} # при каждом session.commit()
         # для данного пользователя дата обновляется
     )
 
 
 class User(BaseModel):
-    username: str = Field(index = True)
-    created_at: datetime
-
+    username: str = Field(
+        index = True,
+        description="Уникальный email пользователя"
+    )
+    created_at: datetime = Field(
+        description="Дата и время регистрации аккаунта",
+        schema_extra={"example": "02.07.2026 15:09:07"}
+    )
     # вызывается при конвертированнии данных в json перед передачей на frontend
     @field_serializer("created_at")
     def serialize_datetime(self, dt: datetime) -> str:
