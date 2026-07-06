@@ -7,7 +7,8 @@ from models import AccessToken, UserInDB, User, RefreshToken
 from dependencies import SessionDep, FormDataDep, UserDep, require_role
 from database import (get_user, add_user, get_refresh_token, add_refresh_token, 
                       delete_refresh_token, set_refresh_token_expire_date, 
-                      get_particular_users, enforce_session_limit)
+                      get_particular_user, get_particular_users, 
+                      enforce_session_limit)
 from typing import Annotated, Literal, Sequence
 from security import (verify_password, create_access_token, 
                       generate_refresh_token_string)
@@ -138,10 +139,6 @@ def logout(session: SessionDep, response: Response, refresh_token: str = Cookie(
 
 # access_token содержиться в header чтобы защитить запрос от 
 # перехвата и соответствовать REST-архитектуре
-@router.get("/get_current_user", response_model = User)
-def get_me(user: UserDep) -> UserInDB:
-    return user
-
 
 @router.post("/api/refresh")
 def refresh_session(session: SessionDep, refresh_token: str = Cookie(None)):
@@ -170,9 +167,23 @@ def refresh_session(session: SessionDep, refresh_token: str = Cookie(None)):
 
     return AccessToken(access_token=new_access_token, token_type="bearer")
 
-@router.get("/my_information", response_model = User)
-def get_my_information(user: Annotated[UserInDB, Depends(require_role("user"))]):
+@router.get("/users/me", response_model = User)
+def get_my_information(user: Annotated[UserInDB, Depends(require_role("user", "admin"))]):
     return user
+
+@router.get("/users/{user_id}", response_model = User)
+def particular_user(
+    user_id: int, 
+    session: SessionDep,
+    user: Annotated[UserInDB, Depends(require_role("admin"))],
+) -> UserInDB | None:
+    requested_user = get_particular_user(session, user_id)
+    if requested_user is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"User with id {user_id} not found"
+        )
+    return requested_user
 
 @router.get("/users", response_model = list[User])
 def users(
@@ -182,13 +193,6 @@ def users(
     limit: Annotated[int | None, Query(description = "Максимальное возвращаемое количество записей")] = None,
     sort_by: Annotated[Literal["username", "created_at"], Query(description = "По какому полю сортировать")] = "username",
     sort_order: Annotated[Literal["asc", "desc"], Query(description = "В каком порядке отображать записи")] = "asc"
-) -> Sequence[UserInDB]:
+) -> list[UserInDB]:
     users = get_particular_users(session, username_substring, limit, sort_by, sort_order)
     return users
-
-@router.get("/users/{user_id}", response_model=User)
-def get_particular_user(
-    user_id: int, 
-    user: Annotated[UserInDB, Depends(require_role("admin"))]
-) -> User:
-    ...

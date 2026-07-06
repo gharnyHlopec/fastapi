@@ -23,9 +23,9 @@ FormDataDep = Annotated[OAuth2PasswordRequestForm, Depends()]
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 TokenDep = Annotated[str, Depends(oauth2_scheme)]
 
-def require_role(required_role: str):
+def require_role(*args: str):
     def dependency(user: UserDep) -> UserInDB:
-        if user.role != required_role:
+        if user.role not in list(args):
             raise HTTPException(status_code=400, detail="Insufficient permissions")
         return user
     return dependency # возвращает функцию dependency. Depends() способна вызвать эту возвращаемую функцию.
@@ -38,7 +38,7 @@ def get_current_user(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
-    )
+    ) 
 
     try:
         # декодирует данные, зашифрованные внутри jwt, и проверяет не истек ли токен

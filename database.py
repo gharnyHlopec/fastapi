@@ -14,13 +14,23 @@ def get_user(session: Session, username: str) -> UserInDB | None:
     user = session.exec(query).first()
     return user
 
+def get_particular_user(
+    session: Session, 
+    id: int
+) -> UserInDB | None:
+    query = select(UserInDB).where(UserInDB.id == id)
+    user = session.exec(query).first()
+
+    return user
+
+
 def get_particular_users(
     session: Session,
     username_substring: str | None,
     limit: int | None,
     sort_by: str,
     sort_order: str
-) -> Sequence[UserInDB]:
+) -> list[UserInDB]:
     query = select(UserInDB)
     if username_substring:
         query = query.where(UserInDB.username.icontains(username_substring))
@@ -34,7 +44,7 @@ def get_particular_users(
     if limit: 
         query = query.limit(limit)
     users = session.exec(query).all()
-    return users
+    return list(users)
 
 
 def add_user(session: Session, user: UserInDB) -> None:
