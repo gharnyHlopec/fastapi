@@ -9,7 +9,7 @@ from database import (get_user, add_user, get_refresh_token, add_refresh_token,
                       delete_refresh_token, set_refresh_token_expire_date, 
                       get_particular_user, get_particular_users, 
                       enforce_session_limit)
-from typing import Annotated, Literal, Sequence
+from typing import Annotated, Literal
 from security import (verify_password, create_access_token, 
                       generate_refresh_token_string)
 from schemas import to_form_user
@@ -21,7 +21,7 @@ def read_root():
     return {"message": "Welcome to my basic FastAPI service!"}
 
 
-@router.post("/register")
+@router.post("/register", response_model = AccessToken)
 def register(
     # здесь класс OAuth2PasswordRequestForm показывает, что питону нужно брать данные не из query-параметров или body:json, а из body:form-data.
     form_data: FormDataDep,
@@ -59,7 +59,7 @@ def register(
 
     return AccessToken(access_token=access_token, token_type="bearer")
 
-@router.post("/token")
+@router.post("/token", response_model = AccessToken)
 def login( # чтобы система преобразовала объект FormData в json
     # здесь класс OAuth2PasswordRequestForm показывает, что питону нужно брать данные не из query-параметров или body:json, а из body:form-data.
     form_data: FormDataDep,
@@ -110,7 +110,11 @@ def login( # чтобы система преобразовала объект F
     return AccessToken(access_token=access_token, token_type="bearer")
 
 @router.post("/logout")
-def logout(session: SessionDep, response: Response, refresh_token: str = Cookie(None)):
+def logout(
+    session: SessionDep,
+    response: Response, 
+    refresh_token: str = Cookie(None)
+):
     logout_exception = HTTPException(status_code=404, detail="User is not logged in")
     if not refresh_token:
         raise logout_exception
@@ -140,8 +144,11 @@ def logout(session: SessionDep, response: Response, refresh_token: str = Cookie(
 # access_token содержиться в header чтобы защитить запрос от 
 # перехвата и соответствовать REST-архитектуре
 
-@router.post("/api/refresh")
-def refresh_session(session: SessionDep, refresh_token: str = Cookie(None)):
+@router.post("/api/refresh", response_model=AccessToken)
+def refresh_session(
+    session: SessionDep,
+    refresh_token: str = Cookie(None)
+) -> AccessToken:
     session_expired_exc = HTTPException(status_code=404, detail="Session expired. Log in again please.")
 
     if not refresh_token:
