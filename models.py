@@ -17,14 +17,37 @@ class AccessToken(BaseModel):
     )
     token_type: Literal["bearer"] = Field(
         default = "bearer",
-        description = "Тип токена. В нашем случае всегда 'bearer'"
+        description = "Тип токена. В нашем случае всегда 'bearer'",
+        schema_extra = {"example": "bearer"}
     )
+
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "access_token": "JNW54zxJpN0t5e9_VAsKoeEI7edycjtWJWt6_xIiw8nsWNE2YvZvn3HF3nza3TayuLv41O6SjyL4pTLYPE0B8w",
+                    "token_type": "bearer"
+                }
+            ]
+        }
+    }
 
 class TokenData(BaseModel):
     username: str = Field(
         description = "Уникальный email пользователя",
         schema_extra={"example": "useremail@gmail.com"}
     )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "username": "useremail@gmail.com",
+                }
+            ]
+        }
+    }
 
 class UserInDB(SQLModel, table = True):
     id: int | None = Field(
@@ -46,22 +69,22 @@ class UserInDB(SQLModel, table = True):
     created_at: datetime = Field(
         default_factory = lambda: datetime.now(timezone.utc),
         description="Дата и время регистрации аккаунта",
-        schema_extra={"example": "02.07.2026 15:09:07"}
     )
 
     updated_at: datetime = Field(
         default_factory= lambda: datetime.now(timezone.utc), 
         description="Дата и время изменения записи пользователя, которое происходит через ORM session.commit()",
-        schema_extra={"example": "02.07.2026 15:09:07"},
         sa_column_kwargs= {"onupdate": lambda: datetime.now(timezone.utc)} # при каждом session.commit()
         # для данного пользователя дата обновляется
     )
 
 
+
 class User(BaseModel):
     username: str = Field(
         index = True,
-        description="Уникальный email пользователя"
+        description="Уникальный email пользователя",
+        schema_extra={"example": "user@gmail.com"}
     )
     created_at: datetime = Field(
         description="Дата и время регистрации аккаунта",
@@ -71,6 +94,17 @@ class User(BaseModel):
     @field_serializer("created_at")
     def serialize_datetime(self, dt: datetime) -> str:
         return dt.strftime("%d.%m.%Y %H:%M:%S")
+    
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "username": "useremail@gmail.com",
+                    "created_at": "02.07.2026 15:09:07"
+                }
+            ]
+        }
+    }
 
 class RefreshToken(SQLModel, table = True):
     id: int | None = Field(
