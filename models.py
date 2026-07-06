@@ -1,4 +1,4 @@
-from pydantic import BaseModel, field_serializer
+from pydantic import BaseModel, field_serializer, EmailStr
 from sqlmodel import SQLModel, Field 
 from sqlalchemy import Column, DateTime
 from datetime import datetime, timezone
@@ -34,7 +34,7 @@ class AccessToken(BaseModel):
     }
 
 class TokenData(BaseModel):
-    username: str = Field(
+    username: EmailStr = Field(
         description = "Уникальный email пользователя",
         schema_extra={"example": "useremail@gmail.com"}
     )
@@ -49,13 +49,53 @@ class TokenData(BaseModel):
         }
     }
 
+class UserBase(BaseModel):
+    username: EmailStr = Field(
+        index = True,
+        description="Уникальный email пользователя",
+        schema_extra={"example": "user@gmail.com"}
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "username": "useremail@gmail.com",
+                }
+            ]
+        }
+    }
+
+class UserOutput(UserBase):
+    created_at: datetime = Field(
+        description="Дата и время регистрации аккаунта",
+        schema_extra={"example": "02.07.2026 15:09:07"}
+    )
+    # вызывается при конвертированнии данных в json перед передачей на frontend
+    @field_serializer("created_at")
+    def serialize_datetime(self, dt: datetime) -> str:
+        return dt.strftime("%d.%m.%Y %H:%M:%S")
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "username": "useremail@gmail.com",
+                    "created_at": "02.07.2026 15:09:07"
+                }
+            ]
+        }
+    }
+
+
+# при table=True не происходит валидация со стороны pydantic. 
 class UserInDB(SQLModel, table = True):
     id: int | None = Field(
         default = None, 
         description="Уникальный id пользователя",
         primary_key=True
     )
-    username: str = Field(
+    username: EmailStr = Field(
         index = True,
         description="Уникальный email пользователя"
     )
@@ -80,32 +120,6 @@ class UserInDB(SQLModel, table = True):
 
 
 
-class User(BaseModel):
-    username: str = Field(
-        index = True,
-        description="Уникальный email пользователя",
-        schema_extra={"example": "user@gmail.com"}
-    )
-    created_at: datetime = Field(
-        description="Дата и время регистрации аккаунта",
-        schema_extra={"example": "02.07.2026 15:09:07"}
-    )
-    # вызывается при конвертированнии данных в json перед передачей на frontend
-    @field_serializer("created_at")
-    def serialize_datetime(self, dt: datetime) -> str:
-        return dt.strftime("%d.%m.%Y %H:%M:%S")
-    
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "username": "useremail@gmail.com",
-                    "created_at": "02.07.2026 15:09:07"
-                }
-            ]
-        }
-    }
-
 class RefreshToken(SQLModel, table = True):
     id: int | None = Field(
         default = None, 
@@ -115,7 +129,7 @@ class RefreshToken(SQLModel, table = True):
     token: str = Field(
         description="Jwt токен"
     )
-    username: str = Field(
+    username: EmailStr = Field(
         index = True,
         description="Уникальный email пользователя"
     )

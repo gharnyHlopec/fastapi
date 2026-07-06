@@ -3,7 +3,7 @@ from fastapi import (HTTPException, Response, Cookie, status, Depends,
 from datetime import datetime, timedelta, timezone
 from config import settings
 import traceback
-from models import AccessToken, UserInDB, User, RefreshToken
+from models import AccessToken, UserInDB, UserOutput, RefreshToken
 from dependencies import SessionDep, FormDataDep, UserDep, require_role
 from database import (get_user, add_user, get_refresh_token, add_refresh_token, 
                       delete_refresh_token, set_refresh_token_expire_date, 
@@ -174,11 +174,11 @@ def refresh_session(
 
     return AccessToken(access_token=new_access_token, token_type="bearer")
 
-@router.get("/users/me", response_model = User)
+@router.get("/users/me", response_model = UserOutput)
 def get_my_information(user: Annotated[UserInDB, Depends(require_role("user", "admin"))]):
     return user
 
-@router.get("/users/{user_id}", response_model = User)
+@router.get("/users/{user_id}", response_model = UserOutput)
 def particular_user(
     user_id: int, 
     session: SessionDep,
@@ -192,14 +192,42 @@ def particular_user(
         )
     return requested_user
 
-@router.get("/users", response_model = list[User])
+@router.get("/users", response_model = list[UserOutput])
 def users(
-    user: Annotated[UserInDB, Depends(require_role("admin"))],
+    user: Annotated[
+        UserInDB, 
+        Depends(require_role("admin"))
+    ],
     session: SessionDep,
-    username_substring: Annotated[str | None,  Query(description = "Поиск по части username'а")] = None,
-    limit: Annotated[int | None, Query(description = "Максимальное возвращаемое количество записей")] = None,
-    sort_by: Annotated[Literal["username", "created_at"], Query(description = "По какому полю сортировать")] = "username",
-    sort_order: Annotated[Literal["asc", "desc"], Query(description = "В каком порядке отображать записи")] = "asc"
+    username_substring: Annotated[
+        str | None, 
+        Query(
+            examples = ["user"],
+            description = "Подстрока для поиска пользователей по части username'а"
+        )
+    ] = None,
+    limit: Annotated[
+        int | None, 
+        Query(
+            examples = [1],
+            gt=0, 
+            description = "Максимальное возвращаемое количество записей"
+        )
+    ] = None,
+    sort_by: Annotated[
+        Literal["username", "created_at"],
+        Query(
+            examples = ["username"],
+            description = "По какому полю сортировать"
+        )
+    ] = "username",
+    sort_order: Annotated[
+        Literal["asc", "desc"],
+        Query(
+            examples = ["asc"],
+            description = "В каком порядке отображать записи"
+            )
+    ] = "asc"
 ) -> list[UserInDB]:
     users = get_particular_users(session, username_substring, limit, sort_by, sort_order)
     return users
