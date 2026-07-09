@@ -1,31 +1,35 @@
-from sqlmodel import Session, SQLModel, select, delete, create_engine, asc, desc
+from sqlmodel import SQLModel, select, delete, asc, desc
 from models import UserInDB, RefreshToken
 from datetime import timezone
 from config import settings
-from typing import Sequence
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession
 
-engine = create_engine(settings.DATABASE_URL)
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
+engine = create_async_engine(settings.DATABASE_URL)
+
+async def create_db_and_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(SQLModel.metadata.create_all)
 
 
-def get_user(session: Session, username: str) -> UserInDB | None:
+async def get_user(session: AsyncSession, username: str) -> UserInDB | None:
     query = select(UserInDB).where(UserInDB.username == username)
-    user = session.exec(query).first()
+    result = await session.execute(query)
+    user = result.scalars().first()
     return user
 
-def get_particular_user(
-    session: Session, 
+async def get_particular_user(
+    session: AsyncSession, 
     id: int
 ) -> UserInDB | None:
     query = select(UserInDB).where(UserInDB.id == id)
-    user = session.exec(query).first()
-
+    result = await session.execute(query)
+    user = result.scalars().first()
     return user
 
 
-def get_particular_users(
-    session: Session,
+async def get_sorted_users(
+    session: AsyncSession,
     username_substring: str | None,
     limit: int | None,
     sort_by: str,
@@ -43,13 +47,15 @@ def get_particular_users(
     
     if limit: 
         query = query.limit(limit)
-    users = session.exec(query).all()
+    result = await session.execute(query)
+    users = result.scalars().all()
+    
     return list(users)
 
 
-def add_user(session: Session, user: UserInDB) -> None:
+async def add_user(session: AsyncSession, user: UserInDB) -> None:
     session.add(user)
-    session.commit()
+    await session.commit()
 
 
 
@@ -58,40 +64,42 @@ def add_user(session: Session, user: UserInDB) -> None:
 
 
 
-def get_refresh_token(session: Session, refresh_token: str) -> RefreshToken | None:
+async def get_refresh_token(session: AsyncSession, refresh_token: str) -> RefreshToken | None:
     query = select(RefreshToken).where(RefreshToken.token == refresh_token)
-    data = session.exec(query).first()
+    result = await session.execute(query)
+    data = result.scalars().first()
     if data and data.expires_at.tzinfo is None:
         data.expires_at = data.expires_at.replace(tzinfo=timezone.utc)
     return data
 
 
-def add_refresh_token(session: Session, refresh_token: RefreshToken):
+async def add_refresh_token(session: AsyncSession, refresh_token: RefreshToken):
     session.add(refresh_token)
-    session.commit()
+    await session.commit()
 
-def delete_refresh_token(session: Session, refresh_token: str | RefreshToken):
+async def delete_refresh_token(session: AsyncSession, refresh_token: str | RefreshToken):
     if isinstance(refresh_token, RefreshToken):
         refresh_token = refresh_token.token
     
     query = delete(RefreshToken).where(RefreshToken.token == refresh_token)
-    session.exec(query)
-    session.commit()
+    await session.execute(query)
+    await session.commit()
 
-def set_refresh_token_expire_date(session: Session, refresh_token: RefreshToken):
+async def set_refresh_token_expire_date(session: AsyncSession, refresh_token: RefreshToken):
     session.add(refresh_token)
-    session.commit()
+    await session.commit()
 
 
 
 
 
 
-def enforce_session_limit(session: Session, username):
+async def enforce_session_limit(session: AsyncSession, username: str):
     query = select(RefreshToken).where(RefreshToken.username == username).order_by(RefreshToken.expires_at)
-    res = session.exec(query).all()
-    if len(res) >= settings.MAX_SESSIONS_PER_USER:
-        oldest = res[0]
+    result = await session.execute(query)
+    sessions = result.scalars().all()
+    if len(sessions) >= settings.MAX_SESSIONS_PER_USER:
+        oldest = sessions[0]
         query = delete(RefreshToken).where(RefreshToken.id == oldest.id)
-        session.exec(query)
-        session.commit()
+        await session.execute(query)
+        await session.commit()

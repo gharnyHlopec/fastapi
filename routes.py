@@ -7,12 +7,13 @@ from models import AccessToken, UserInDB, UserOutput, RefreshToken
 from dependencies import SessionDep, FormDataDep, UserDep, require_role
 from database import (get_user, add_user, get_refresh_token, add_refresh_token, 
                       delete_refresh_token, set_refresh_token_expire_date, 
-                      get_particular_user, get_particular_users, 
+                      get_particular_user, get_sorted_users, 
                       enforce_session_limit)
 from typing import Annotated, Literal
 from security import (verify_password, create_access_token, 
                       generate_refresh_token_string)
 from schemas import to_form_user
+import asyncio
 
 router = APIRouter()
 
@@ -22,18 +23,19 @@ def read_root():
 
 
 @router.post("/register", response_model = AccessToken)
-def register(
+async def register(
     # здесь класс OAuth2PasswordRequestForm показывает, что питону нужно брать данные не из query-параметров или body:json, а из body:form-data.
     form_data: FormDataDep,
     response: Response,
     session: SessionDep
 ) -> AccessToken:
-    if get_user(session, form_data.username):
+    user = await get_user(session, form_data.username)
+    if user:
         raise HTTPException(status_code=400, detail="User with such email already exists")
 
-    user = to_form_user(form_data)
+    user = await to_form_user(form_data)
     try:
-        add_user(session, user)
+        await add_user(session, user)
     except Exception:
         raise HTTPException(status_code=400, detail="Something went wrong while trying to add user to database")
     
@@ -44,7 +46,7 @@ def register(
     expiration_date = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     refresh_token = RefreshToken(username = form_data.username, token=refresh_token_value, expires_at=expiration_date)
     try:
-        add_refresh_token(session, refresh_token)
+        await add_refresh_token(session, refresh_token)
     except Exception:
         raise HTTPException(status_code=400, detail="Something went wrong while trying to add refresh token to database")
 
@@ -54,13 +56,13 @@ def register(
         httponly=True,
         secure=False, ##########!!!!!!!! чтобы Cookie передавались по http. в deployment обязательно сделать True.
         samesite="lax",
-        expires=60*60*24*90
+        max_age=60*60*24*90
     )
 
     return AccessToken(access_token=access_token, token_type="bearer")
 
 @router.post("/token", response_model = AccessToken)
-def login( # чтобы система преобразовала объект FormData в json
+async def login( # чтобы система преобразовала объект FormData в json
     # здесь класс OAuth2PasswordRequestForm показывает, что питону нужно брать данные не из query-параметров или body:json, а из body:form-data.
     form_data: FormDataDep,
     response: Response,
@@ -72,25 +74,22 @@ def login( # чтобы система преобразовала объект F
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-    user = get_user(session, form_data.username)
+    user = await get_user(session, form_data.username)
     if not user:
         raise credentials_exception
     
     hashed_password = user.hashed_password
-    is_correct_password = verify_password(
-        form_data.password,
-        hashed_password,
-    )
+    is_correct_password = await asyncio.to_thread(verify_password, form_data.password, hashed_password)
 
     if not is_correct_password:
         raise credentials_exception
     
-    enforce_session_limit(session, user.username)
+    await enforce_session_limit(session, user.username)
 
     refresh_token_value = generate_refresh_token_string()
     expiration_date = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     refresh_token = RefreshToken(username = user.username, token=refresh_token_value, expires_at=expiration_date)
-    add_refresh_token(session, refresh_token)
+    await add_refresh_token(session, refresh_token)
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -104,13 +103,13 @@ def login( # чтобы система преобразовала объект F
         httponly=True,
         secure=False, ##########!!!!!!!! чтобы Cookie передавались по http. в deployment обязательно сделать True.
         samesite="lax",
-        expires=60*60*24*90
+        max_age=60*60*24*90
     )
 
     return AccessToken(access_token=access_token, token_type="bearer")
 
 @router.post("/logout")
-def logout(
+async def logout(
     session: SessionDep,
     response: Response, 
     refresh_token: str = Cookie(None)
@@ -118,7 +117,7 @@ def logout(
     logout_exception = HTTPException(status_code=404, detail="User is not logged in")
     if not refresh_token:
         raise logout_exception
-    delete_refresh_token(session, refresh_token)
+    await delete_refresh_token(session, refresh_token)
     response.delete_cookie(
         key = "refresh_token",
         domain=None,
@@ -145,7 +144,7 @@ def logout(
 # перехвата и соответствовать REST-архитектуре
 
 @router.post("/api/refresh", response_model=AccessToken)
-def refresh_session(
+async def refresh_session(
     session: SessionDep,
     refresh_token: str = Cookie(None)
 ) -> AccessToken:
@@ -154,17 +153,17 @@ def refresh_session(
     if not refresh_token:
         raise session_expired_exc
         
-    token_data = get_refresh_token(session, refresh_token)
+    token_data = await get_refresh_token(session, refresh_token)
     if not token_data:
         raise session_expired_exc
 
     if datetime.now(timezone.utc) > token_data.expires_at:
-        delete_refresh_token(session, token_data)
+        await delete_refresh_token(session, token_data)
         raise session_expired_exc
  
     token_data.expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS) 
     try:
-        set_refresh_token_expire_date(session, token_data)
+        await set_refresh_token_expire_date(session, token_data)
     except Exception:
         raise HTTPException(status_code=404, detail="Something went wrong. Please try again later.")
     expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -179,12 +178,12 @@ def get_my_information(user: Annotated[UserInDB, Depends(require_role("user", "a
     return user
 
 @router.get("/users/{user_id}", response_model = UserOutput)
-def particular_user(
+async def particular_user(
     user_id: int, 
     session: SessionDep,
     user: Annotated[UserInDB, Depends(require_role("admin"))],
 ) -> UserInDB | None:
-    requested_user = get_particular_user(session, user_id)
+    requested_user = await get_particular_user(session, user_id)
     if requested_user is None:
         raise HTTPException(
             status_code=404,
@@ -193,7 +192,7 @@ def particular_user(
     return requested_user
 
 @router.get("/users", response_model = list[UserOutput])
-def users(
+async def users(
     user: Annotated[
         UserInDB, 
         Depends(require_role("admin"))
@@ -229,5 +228,5 @@ def users(
             )
     ] = "asc"
 ) -> list[UserInDB]:
-    users = get_particular_users(session, username_substring, limit, sort_by, sort_order)
+    users = await get_sorted_users(session, username_substring, limit, sort_by, sort_order)
     return users
