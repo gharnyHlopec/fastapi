@@ -108,17 +108,21 @@ class UserInDB(SQLModel, table = True):
         description="Роль пользователя. Может принимать только значения 'user' и 'admin'"
     )
 
-    created_at: datetime = Field(
+    created_at: datetime = Field( # удобный высокоуровневый способ описать поле, который автоматически генерирует соответствующую SQLAlchemy-колонку.
         default_factory = lambda: datetime.now(timezone.utc),
-        sa_column = Column(DateTime(timezone=True)),
+        # без sa_column SQLModel бы автоматически установил тип колонки DateTime(timezone=False)
+        sa_column = Column( # класс SQLAlchemy, описывающий колонку в БД
+            DateTime(timezone=True) # тип данных SQLAlchemy
+        ),
         description="Дата и время регистрации аккаунта",
     )
 
-    updated_at: datetime = Field(
+    updated_at: datetime = Field( # удобный высокоуровневый способ описать поле, который автоматически генерирует соответствующую SQLAlchemy-колонку.
         default_factory= lambda: datetime.now(timezone.utc), 
         description="Дата и время изменения записи пользователя, которое происходит через ORM session.commit()",
-        sa_column = Column(
-            DateTime(timezone=True),
+        # без sa_column SQLModel бы автоматически установил тип колонки DateTime(timezone=False)
+        sa_column = Column( # класс SQLAlchemy, описывающий колонку в БД
+            DateTime(timezone=True), # тип данных SQLAlchemy
             onupdate = lambda: datetime.now(timezone.utc)
         )
     )
@@ -140,7 +144,10 @@ class RefreshToken(SQLModel, table = True):
         index = True,
         description="Уникальный email пользователя"
     )
-    expires_at: datetime = Field(
-        sa_column=Column(DateTime(timezone=True)),
+    expires_at: datetime = Field( # удобный высокоуровневый способ описать поле, который автоматически генерирует соответствующую SQLAlchemy-колонку.
+        # без sa_column SQLModel бы автоматически установил тип колонки DateTime(timezone=False)
+        sa_column=Column( # класс SQLAlchemy, описывающий колонку в БД
+            DateTime(timezone=True) # тип данных SQLAlchemy
+        ),
         description="Время истечения срока действия токена"
     )
