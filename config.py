@@ -1,6 +1,8 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pathlib import Path
 
 class Settings(BaseSettings):
+    LOG_DIR: Path = Path(__file__).parent / "logs"
     DATABASE_URL: str
     SECRET_KEY : str
     ALGORITHM : str

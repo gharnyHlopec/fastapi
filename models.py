@@ -90,6 +90,8 @@ class UserOutput(UserBase):
 
 # при table=True не происходит валидация со стороны pydantic. 
 class UserInDB(SQLModel, table = True):
+    __tablename__ = 'users'  # Table name in the database
+
     id: int | None = Field(
         default = None, 
         description="Уникальный id пользователя",
@@ -108,19 +110,24 @@ class UserInDB(SQLModel, table = True):
 
     created_at: datetime = Field(
         default_factory = lambda: datetime.now(timezone.utc),
+        sa_column = Column(DateTime(timezone=True)),
         description="Дата и время регистрации аккаунта",
     )
 
     updated_at: datetime = Field(
         default_factory= lambda: datetime.now(timezone.utc), 
         description="Дата и время изменения записи пользователя, которое происходит через ORM session.commit()",
-        sa_column_kwargs= {"onupdate": lambda: datetime.now(timezone.utc)} # при каждом session.commit()
-        # для данного пользователя дата обновляется
+        sa_column = Column(
+            DateTime(timezone=True),
+            onupdate = lambda: datetime.now(timezone.utc)
+        )
     )
 
 
 
 class RefreshToken(SQLModel, table = True):
+    __tablename__ = "refresh_tokens"
+    
     id: int | None = Field(
         default = None, 
         primary_key=True,

@@ -3,12 +3,15 @@ from fastapi import FastAPI, Request, HTTPException
 from database import create_db_and_tables
 from routes import router
 from pydantic import ValidationError
+from logger import setup_logging
+from traceback import format_exc
 
 @asynccontextmanager
 async def lifespan(app :FastAPI):
     await create_db_and_tables()
     yield
 
+setup_logging()
 app = FastAPI(lifespan=lifespan)
 
 app.include_router(router)

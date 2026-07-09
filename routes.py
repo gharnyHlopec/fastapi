@@ -14,8 +14,11 @@ from security import (verify_password, create_access_token,
                       generate_refresh_token_string)
 from schemas import to_form_user
 import asyncio
+import logging
 
+logger = logging.getLogger("app")
 router = APIRouter()
+
 
 @router.get("/")
 def read_root():
@@ -37,6 +40,8 @@ async def register(
     try:
         await add_user(session, user)
     except Exception:
+        exc_traceback = traceback.format_exc()
+        logger.error(exc_traceback)
         raise HTTPException(status_code=400, detail="Something went wrong while trying to add user to database")
     
     expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -48,6 +53,8 @@ async def register(
     try:
         await add_refresh_token(session, refresh_token)
     except Exception:
+        exc_traceback = traceback.format_exc()
+        logger.error(exc_traceback)
         raise HTTPException(status_code=400, detail="Something went wrong while trying to add refresh token to database")
 
     response.set_cookie(
@@ -165,6 +172,8 @@ async def refresh_session(
     try:
         await set_refresh_token_expire_date(session, token_data)
     except Exception:
+        exc_traceback = traceback.format_exc()
+        logger.error(exc_traceback)
         raise HTTPException(status_code=404, detail="Something went wrong. Please try again later.")
     expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     new_access_token = create_access_token(
