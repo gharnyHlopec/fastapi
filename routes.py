@@ -1,5 +1,5 @@
 from fastapi import (HTTPException, Response, Cookie, status, Depends,
-                     APIRouter, Query)
+                     APIRouter, Query, Request)
 from datetime import datetime, timedelta, timezone
 from config import settings
 from models import AccessToken, UserInDB, UserOutput, RefreshToken
@@ -14,7 +14,11 @@ from security import (verify_password, create_access_token,
 from schemas import to_form_user
 import asyncio
 import logging
-from exceptions import InvalidCredentialsException, UnauthorizedException, TokenExpiredException
+from exceptions import (InvalidCredentialsException, 
+                        UnauthorizedException, 
+                        TokenExpiredException, 
+                        ParticularUserNotFoundException)
+from auth import limiter
 
 logger = logging.getLogger("app")
 router = APIRouter()
@@ -25,16 +29,18 @@ def read_root():
     return {"message": "Welcome to my basic FastAPI service!"}
 
 
+@limiter.limit("5/minute") # декоратор требует, чтобы в сигнатуре эндпоинта был параметр request: Request
 @router.post("/register", response_model = AccessToken)
 async def register(
     # здесь класс OAuth2PasswordRequestForm показывает, что питону нужно брать данные не из query-параметров или body:json, а из body:form-data.
     form_data: FormDataDep,
+    request: Request,
     response: Response,
     session: SessionDep
 ) -> AccessToken:
     user = await get_user(session, form_data.username)
     if user:
-        raise HTTPException(status_code=400, detail="User with such email already exists")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User with such email already exists")
 
     user = await to_form_user(form_data)
 
@@ -59,10 +65,12 @@ async def register(
 
     return AccessToken(access_token=access_token, token_type="bearer")
 
+@limiter.limit("5/minute")
 @router.post("/token", response_model = AccessToken)
 async def login( # чтобы система преобразовала объект FormData в json
     # здесь класс OAuth2PasswordRequestForm показывает, что питону нужно брать данные не из query-параметров или body:json, а из body:form-data.
     form_data: FormDataDep,
+    request: Request,
     response: Response,
     session: SessionDep
 ) -> AccessToken:
@@ -70,13 +78,13 @@ async def login( # чтобы система преобразовала объе
 
     user = await get_user(session, form_data.username)
     if not user:
-        raise InvalidCredentialsException
+        raise InvalidCredentialsException()
     
     hashed_password = user.hashed_password
     is_correct_password = await asyncio.to_thread(verify_password, form_data.password, hashed_password)
 
     if not is_correct_password:
-        raise InvalidCredentialsException
+        raise InvalidCredentialsException()
     
     await enforce_session_limit(session, user.username)
 
@@ -103,6 +111,8 @@ async def login( # чтобы система преобразовала объе
 
     return AccessToken(access_token=access_token, token_type="bearer")
 
+# низкий приоритет. 
+@limiter.limit("60/minute")
 @router.post("/logout")
 async def logout(
     session: SessionDep,
@@ -111,7 +121,7 @@ async def logout(
 ):
 
     if not refresh_token:
-        raise UnauthorizedException
+        raise UnauthorizedException()
     await delete_refresh_token(session, refresh_token)
     response.delete_cookie(
         key = "refresh_token",
@@ -138,6 +148,8 @@ async def logout(
 # access_token содержиться в header чтобы защитить запрос от 
 # перехвата и соответствовать REST-архитектуре
 
+# Защита от DoS, любой эндпоинт, работающий с токенами аутентификации, разумно лимитировать по умолчанию
+@limiter.limit("10/minute")
 @router.post("/api/refresh", response_model=AccessToken)
 async def refresh_session(
     session: SessionDep,
@@ -145,15 +157,15 @@ async def refresh_session(
 ) -> AccessToken:
 
     if not refresh_token:
-        raise TokenExpiredException
+        raise TokenExpiredException()
         
     token_data = await get_refresh_token(session, refresh_token)
     if not token_data:
-        raise TokenExpiredException
+        raise TokenExpiredException()
 
     if datetime.now(timezone.utc) > token_data.expires_at:
         await delete_refresh_token(session, token_data)
-        raise TokenExpiredException
+        raise TokenExpiredException()
  
     token_data.expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS) 
     await set_refresh_token_expire_date(session, token_data)
@@ -164,10 +176,14 @@ async def refresh_session(
 
     return AccessToken(access_token=new_access_token, token_type="bearer")
 
+# низкий приоритет. 
+@limiter.limit("60/minute")
 @router.get("/users/me", response_model = UserOutput)
 def get_my_information(user: Annotated[UserInDB, Depends(require_role("user", "admin"))]):
     return user
 
+# низкий приоритет. защита от скрейпинга данных если admin-аккаунт был скомпрометирован 
+@limiter.limit("60/minute")
 @router.get("/users/{user_id}", response_model = UserOutput)
 async def particular_user(
     user_id: int, 
@@ -176,12 +192,11 @@ async def particular_user(
 ) -> UserInDB | None:
     requested_user = await get_particular_user(session, user_id)
     if requested_user is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"User with id {user_id} not found"
-        )
+        raise ParticularUserNotFoundException(user_id)
     return requested_user
 
+# низкий приоритет. защита от скрейпинга данных если admin-аккаунт был скомпрометирован 
+@limiter.limit("60/minute")
 @router.get("/users", response_model = list[UserOutput])
 async def users(
     user: Annotated[
