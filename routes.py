@@ -2,9 +2,8 @@ from fastapi import (HTTPException, Response, Cookie, status, Depends,
                      APIRouter, Query)
 from datetime import datetime, timedelta, timezone
 from config import settings
-import traceback
 from models import AccessToken, UserInDB, UserOutput, RefreshToken
-from dependencies import SessionDep, FormDataDep, UserDep, require_role
+from dependencies import SessionDep, FormDataDep, require_role
 from database import (get_user, add_user, get_refresh_token, add_refresh_token, 
                       delete_refresh_token, set_refresh_token_expire_date, 
                       get_particular_user, get_sorted_users, 
@@ -37,12 +36,8 @@ async def register(
         raise HTTPException(status_code=400, detail="User with such email already exists")
 
     user = await to_form_user(form_data)
-    try:
-        await add_user(session, user)
-    except Exception:
-        exc_traceback = traceback.format_exc()
-        logger.error(exc_traceback)
-        raise HTTPException(status_code=400, detail="Something went wrong while trying to add user to database")
+
+    await add_user(session, user)
     
     expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token({"sub": form_data.username}, expires_delta)
@@ -50,12 +45,7 @@ async def register(
     refresh_token_value = generate_refresh_token_string()
     expiration_date = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     refresh_token = RefreshToken(username = form_data.username, token=refresh_token_value, expires_at=expiration_date)
-    try:
-        await add_refresh_token(session, refresh_token)
-    except Exception:
-        exc_traceback = traceback.format_exc()
-        logger.error(exc_traceback)
-        raise HTTPException(status_code=400, detail="Something went wrong while trying to add refresh token to database")
+    await add_refresh_token(session, refresh_token)
 
     response.set_cookie(
         key = "refresh_token",
@@ -96,6 +86,7 @@ async def login( # чтобы система преобразовала объе
     refresh_token_value = generate_refresh_token_string()
     expiration_date = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     refresh_token = RefreshToken(username = user.username, token=refresh_token_value, expires_at=expiration_date)
+
     await add_refresh_token(session, refresh_token)
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -169,12 +160,7 @@ async def refresh_session(
         raise session_expired_exc
  
     token_data.expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS) 
-    try:
-        await set_refresh_token_expire_date(session, token_data)
-    except Exception:
-        exc_traceback = traceback.format_exc()
-        logger.error(exc_traceback)
-        raise HTTPException(status_code=404, detail="Something went wrong. Please try again later.")
+    await set_refresh_token_expire_date(session, token_data)
     expires_delta = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     new_access_token = create_access_token(
         data = {"sub": token_data.username}, expires_delta=expires_delta

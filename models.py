@@ -33,22 +33,6 @@ class AccessToken(BaseModel):
         }
     }
 
-class TokenData(BaseModel):
-    username: EmailStr = Field(
-        description = "Уникальный email пользователя",
-        schema_extra={"example": "useremail@gmail.com"}
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "username": "useremail@gmail.com",
-                }
-            ]
-        }
-    }
-
 class UserBase(BaseModel):
     username: EmailStr = Field(
         index = True,

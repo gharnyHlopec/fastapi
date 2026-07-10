@@ -1,17 +1,18 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, HTTPException
-from database import create_db_and_tables
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from routes import router
 from pydantic import ValidationError
 from logger import setup_logging
-from traceback import format_exc
+import logging
 
 @asynccontextmanager
 async def lifespan(app :FastAPI):
-    await create_db_and_tables()
     yield
 
 setup_logging()
+logger = logging.getLogger("app")
+
 app = FastAPI(lifespan=lifespan)
 
 app.include_router(router)
@@ -31,7 +32,16 @@ async def pydantic_validation_exception_handler(request: Request, exc: Validatio
         for error in errors
     ]
     
-    raise HTTPException(
+    return JSONResponse(
         status_code=422,
-        detail=formatted_errors
+        content={"details": formatted_errors}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.exception("Occured some exception")
+
+    return JSONResponse(
+        status_code=500,
+        content={"details": "Internal server error"}
     )
