@@ -35,7 +35,6 @@ async def get_particular_user(
 async def get_sorted_users(
     session: AsyncSession,
     username_substring: str | None,
-    limit: int | None,
     sort_by: str,
     sort_order: str
 ) -> list[UserInDB]:
@@ -50,8 +49,6 @@ async def get_sorted_users(
         else:
             query = query.order_by(desc(sort_column))
         
-        if limit: 
-            query = query.limit(limit)
         result = await session.execute(query)
         users = result.scalars().all()
         

@@ -3,3 +3,4 @@ __pycache__/
 logs/
 migrations/__pycache__/
 migrations/versions/__pycache__/
+requirements.txt

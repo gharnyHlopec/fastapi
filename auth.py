@@ -5,10 +5,12 @@ from routes import router
 from logger import setup_logging
 import logging
 
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
+from rate_limiter import limiter
+
 from slowapi.errors import RateLimitExceeded
 
+from fastapi_pagination import add_pagination
 
 
 @asynccontextmanager
@@ -29,7 +31,8 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-limiter = Limiter(key_func=get_remote_address)
+add_pagination(app)
+
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

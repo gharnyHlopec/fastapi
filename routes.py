@@ -1,5 +1,6 @@
 from fastapi import (HTTPException, Response, Cookie, status, Depends,
                      APIRouter, Query, Request)
+from fastapi_pagination import paginate, Params, Page
 from datetime import datetime, timedelta, timezone
 from config import settings
 from models import AccessToken, UserInDB, UserOutput, RefreshToken
@@ -18,7 +19,7 @@ from exceptions import (InvalidCredentialsException,
                         UnauthorizedException, 
                         TokenExpiredException, 
                         ParticularUserNotFoundException)
-from auth import limiter
+from rate_limiter import limiter
 
 logger = logging.getLogger("app")
 router = APIRouter()
@@ -116,6 +117,7 @@ async def login( # чтобы система преобразовала объе
 @router.post("/logout")
 async def logout(
     session: SessionDep,
+    request: Request,
     response: Response, 
     refresh_token: str = Cookie(None)
 ):
@@ -153,6 +155,7 @@ async def logout(
 @router.post("/api/refresh", response_model=AccessToken)
 async def refresh_session(
     session: SessionDep,
+    request: Request,
     refresh_token: str = Cookie(None)
 ) -> AccessToken:
 
@@ -179,7 +182,15 @@ async def refresh_session(
 # низкий приоритет. 
 @limiter.limit("60/minute")
 @router.get("/users/me", response_model = UserOutput)
-def get_my_information(user: Annotated[UserInDB, Depends(require_role("user", "admin"))]):
+def get_my_information(
+    user: Annotated[
+        UserInDB, 
+        Depends(
+            require_role("user", "admin")
+        )
+    ],
+    request: Request
+):
     return user
 
 # низкий приоритет. защита от скрейпинга данных если admin-аккаунт был скомпрометирован 
@@ -188,7 +199,13 @@ def get_my_information(user: Annotated[UserInDB, Depends(require_role("user", "a
 async def particular_user(
     user_id: int, 
     session: SessionDep,
-    user: Annotated[UserInDB, Depends(require_role("admin"))],
+    request: Request,
+    user: Annotated[
+        UserInDB, 
+        Depends(
+            require_role("admin")
+        )
+    ],
 ) -> UserInDB | None:
     requested_user = await get_particular_user(session, user_id)
     if requested_user is None:
@@ -197,26 +214,20 @@ async def particular_user(
 
 # низкий приоритет. защита от скрейпинга данных если admin-аккаунт был скомпрометирован 
 @limiter.limit("60/minute")
-@router.get("/users", response_model = list[UserOutput])
+@router.get("/users", response_model = Page)
 async def users(
     user: Annotated[
         UserInDB, 
         Depends(require_role("admin"))
     ],
+    request: Request,
     session: SessionDep,
+    params: Params = Depends(), # gets query params and injects them into variable params of class Params. params: page, size
     username_substring: Annotated[
         str | None, 
         Query(
             examples = ["user"],
             description = "Подстрока для поиска пользователей по части username'а"
-        )
-    ] = None,
-    limit: Annotated[
-        int | None, 
-        Query(
-            examples = [1],
-            gt=0, 
-            description = "Максимальное возвращаемое количество записей"
         )
     ] = None,
     sort_by: Annotated[
@@ -233,6 +244,6 @@ async def users(
             description = "В каком порядке отображать записи"
             )
     ] = "asc"
-) -> list[UserInDB]:
-    users = await get_sorted_users(session, username_substring, limit, sort_by, sort_order)
-    return users
+) -> Page[int]:
+    users = await get_sorted_users(session, username_substring, sort_by, sort_order)
+    return paginate(users)
