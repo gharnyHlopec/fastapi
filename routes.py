@@ -14,6 +14,7 @@ from security import (verify_password, create_access_token,
 from schemas import to_form_user
 import asyncio
 import logging
+from exceptions import InvalidCredentialsException, UnauthorizedException, TokenExpiredException
 
 logger = logging.getLogger("app")
 router = APIRouter()
@@ -65,21 +66,17 @@ async def login( # чтобы система преобразовала объе
     response: Response,
     session: SessionDep
 ) -> AccessToken:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Incorrect email or password",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+
 
     user = await get_user(session, form_data.username)
     if not user:
-        raise credentials_exception
+        raise InvalidCredentialsException
     
     hashed_password = user.hashed_password
     is_correct_password = await asyncio.to_thread(verify_password, form_data.password, hashed_password)
 
     if not is_correct_password:
-        raise credentials_exception
+        raise InvalidCredentialsException
     
     await enforce_session_limit(session, user.username)
 
@@ -112,9 +109,9 @@ async def logout(
     response: Response, 
     refresh_token: str = Cookie(None)
 ):
-    logout_exception = HTTPException(status_code=404, detail="User is not logged in")
+
     if not refresh_token:
-        raise logout_exception
+        raise UnauthorizedException
     await delete_refresh_token(session, refresh_token)
     response.delete_cookie(
         key = "refresh_token",
@@ -146,18 +143,17 @@ async def refresh_session(
     session: SessionDep,
     refresh_token: str = Cookie(None)
 ) -> AccessToken:
-    session_expired_exc = HTTPException(status_code=404, detail="Session expired. Log in again please.")
 
     if not refresh_token:
-        raise session_expired_exc
+        raise TokenExpiredException
         
     token_data = await get_refresh_token(session, refresh_token)
     if not token_data:
-        raise session_expired_exc
+        raise TokenExpiredException
 
     if datetime.now(timezone.utc) > token_data.expires_at:
         await delete_refresh_token(session, token_data)
-        raise session_expired_exc
+        raise TokenExpiredException
  
     token_data.expires_at = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS) 
     await set_refresh_token_expire_date(session, token_data)

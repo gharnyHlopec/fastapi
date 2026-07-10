@@ -1,4 +1,4 @@
-from sqlmodel import SQLModel, select, delete, asc, desc
+from sqlmodel import select, delete, asc, desc
 from models import UserInDB, RefreshToken
 from datetime import timezone
 from config import settings

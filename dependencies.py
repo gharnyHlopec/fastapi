@@ -9,6 +9,7 @@ import jwt
 from config import settings
 from jwt.exceptions import InvalidTokenError
 from database import get_user
+from exceptions import InvalidCredentialsException, TokenExpiredException
 
 async def get_session():
     async with AsyncSession(engine, expire_on_commit = False) as session:
@@ -36,24 +37,21 @@ async def get_current_user(
     token: TokenDep,
     session: SessionDep, 
 ) -> UserInDB:
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    ) 
+
 
     try:
         # декодирует данные, зашифрованные внутри jwt, и проверяет не истек ли токен
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]) # если токен протух - функция выкинет InvalidTokenError 
-        username = payload.get("sub")
-        if username is None:
-            raise InvalidTokenError
     except InvalidTokenError: # токен протух
-        raise credentials_exception
+        raise TokenExpiredException
+        
+    username = payload.get("sub")
+    if username is None:
+        raise InvalidTokenError
     
     user = await get_user(session, username)
     if not user:
-        raise credentials_exception
+        raise InvalidCredentialsException
     return user
 
 
